@@ -27,23 +27,36 @@ if (!gotTheLock) {
 function createWindow() {
   // Create window for the print server status
   mainWindow = new BrowserWindow({
-    width: 600,
-    height: 500,
+    // fullscreen: true,
+    frame: true,
+    autoHideMenuBar: true, // hide the menu bar until Alt is pressed
+    minimizable: true,
+    maximizable: true,
+    closable: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    show: false, // Initially hidden
+    show: true, // Initially hidden
     icon: path.join(__dirname, "../icon.png"),
   });
 
   // Load the local status page
-  mainWindow.loadFile(path.join(__dirname, "index.html"));
+  // mainWindow.loadFile(path.join(__dirname, "index.html"));
 
   // Open the user's POS system in their default browser in full screen
-  shell.openExternal("https://respos.zigma99.com/");
+  // shell.openExternal("https://respos.zigma99.com/");
 
-  mainWindow.on("closed", function () {
+  // Load the POS website right in Electron
+  mainWindow.loadURL("https://respos.zigma99.com/");
+
+  // Once it's ready, maximize and show it
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.maximize();
+    mainWindow.show();
+  });
+
+  mainWindow.on("closed", () => {
     mainWindow = null;
   });
 
