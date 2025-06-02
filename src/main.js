@@ -9,6 +9,7 @@ const { print } = require("pdf-to-printer");
 let mainWindow;
 let tray;
 let printLogs = [];
+let isQuitting = false; // Add flag to track if app is quitting
 
 // Check if app is already running (prevent multiple instances)
 const gotTheLock = app.requestSingleInstanceLock();
@@ -19,6 +20,7 @@ if (!gotTheLock) {
     // Someone tried to run a second instance, focus our window instead
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show(); // Ensure window is visible
       mainWindow.focus();
     }
   });
@@ -27,7 +29,8 @@ if (!gotTheLock) {
 function createWindow() {
   // Create window for the print server status
   mainWindow = new BrowserWindow({
-    // fullscreen: true,
+    width: 1200,
+    height: 800,
     frame: true,
     autoHideMenuBar: true, // hide the menu bar until Alt is pressed
     minimizable: true,
@@ -37,23 +40,36 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
-    show: true, // Initially hidden
+    show: false, // Start hidden, show when ready
     icon: path.join(__dirname, "../icon.png"),
   });
 
-  // Load the local status page
-  // mainWindow.loadFile(path.join(__dirname, "index.html"));
-
-  // Open the user's POS system in their default browser in full screen
-  // shell.openExternal("https://respos.zigma99.com/");
-
   // Load the POS website right in Electron
-  mainWindow.loadURL("https://respos.zigma99.com/");
+  mainWindow.loadURL("https://bubble.zigma99.com/");
 
   // Once it's ready, maximize and show it
   mainWindow.once("ready-to-show", () => {
     mainWindow.maximize();
     mainWindow.show();
+  });
+
+  // Handle window close event
+  mainWindow.on("close", (event) => {
+    if (!isQuitting) {
+      // Prevent the window from closing, hide it instead
+      event.preventDefault();
+      mainWindow.hide();
+
+      // Show notification that app is still running in tray
+      if (tray) {
+        tray.displayBalloon({
+          iconType: "info",
+          title: "ZigmaPOS Print Server",
+          content:
+            "Application is still running in the system tray. Right-click the tray icon to quit.",
+        });
+      }
+    }
   });
 
   mainWindow.on("closed", () => {
@@ -71,16 +87,30 @@ function createTray() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: "Show Print Server Status",
+      label: "Show Print Server",
       click: () => {
-        mainWindow.show();
-        mainWindow.focus();
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+        } else {
+          createWindow();
+        }
       },
     },
     {
+      label: "Hide Print Server",
+      click: () => {
+        if (mainWindow) {
+          mainWindow.hide();
+        }
+      },
+    },
+    { type: "separator" },
+    {
       label: "Open POS System",
       click: () => {
-        shell.openExternal("https://respos.zigma99.com/");
+        shell.openExternal("https://bubble.zigma99.com/");
       },
     },
     { type: "separator" },
@@ -97,20 +127,26 @@ function createTray() {
     },
     { type: "separator" },
     {
-      label: "Quit",
+      label: "Quit Application",
       click: () => {
+        isQuitting = true; // Set flag before quitting
         app.quit();
       },
     },
   ]);
 
-  tray.setToolTip("ZigmaPOS Print Server");
+  tray.setToolTip("ZigmaPOS Print Server - Running");
   tray.setContextMenu(contextMenu);
 
   // Show window on tray icon double-click
   tray.on("double-click", () => {
-    mainWindow.show();
-    mainWindow.focus();
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createWindow();
+    }
   });
 }
 
@@ -220,20 +256,35 @@ app.on("ready", () => {
   startExpressServer();
   setupIPC();
 
-  // Set app to open at login
-  app.setLoginItemSettings({
-    openAtLogin: true,
-    openAsHidden: true,
-  });
+  // Optional: Set app to open at login (remove if you don't want this)
+  // app.setLoginItemSettings({
+  //   openAtLogin: true,
+  //   openAsHidden: true,
+  // });
 });
 
-// Don't quit when windows are closed (stay in tray)
+// Modified: Allow proper quitting
 app.on("window-all-closed", function () {
-  // Do nothing to keep app running in background
+  // On macOS, keep running even when all windows are closed
+  if (process.platform !== "darwin") {
+    // On Windows/Linux, quit when all windows are closed unless we have a tray
+    if (!tray) {
+      app.quit();
+    }
+  }
 });
 
 app.on("activate", function () {
-  if (mainWindow === null) createWindow();
+  if (mainWindow === null) {
+    createWindow();
+  } else {
+    mainWindow.show();
+  }
+});
+
+// Handle app quit
+app.on("before-quit", () => {
+  isQuitting = true;
 });
 
 // Quit properly when asked to
